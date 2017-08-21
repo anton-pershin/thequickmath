@@ -1,0 +1,2 @@
+class DimensionsDoNotMatch(Exception):
+    pass
