@@ -6,7 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import h5py
 import numpy as np
-from auxtools import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue, is_sequence
+from aux import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue, is_sequence
 
 # TODO: implement method swapcoords for Field. Sometimes it is useful to change the leading dimension.
 
