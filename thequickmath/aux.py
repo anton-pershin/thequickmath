@@ -43,7 +43,7 @@ class NamedAttributesContainer(object):
 
     def convert_names_to_indexes_if_necessary(self, names):
         indexes = []
-        if isinstance(names[0], basestring):
+        if isinstance(names[0], str):
             indexes = []
             for name in names:
                 indexes.append(self.elements_names.index(name))
@@ -101,6 +101,6 @@ def local_maxima_indices(np_array, threshold):
     '''
     maxima = []
     for i in range(1, len(np_array) - 1): # local minima in array
-        if np_array[i] > np_array[i - 1] and np_array[i] > np_array[i + 1] and np_array[i] > threshold:
+        if np_array[i] > np_array[i - 1] and np_array[i] > np_array[i + 1] and np.abs(np_array[i]) > threshold:
             maxima.append(i)
     return maxima
