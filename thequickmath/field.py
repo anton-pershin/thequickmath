@@ -6,7 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import h5py
 import numpy as np
-from aux import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue, is_sequence
+from thequickmath.aux import *
 
 # TODO: implement method swapcoords for Field. Sometimes it is useful to change the leading dimension.
 
@@ -45,13 +45,19 @@ class Field(NamedAttributesContainer):
         print('____ delete field ____')
 
     def __add__(self, rhs):
-        sum_elements = [elem_self + elem_rhs for elem_self, elem_rhs in zip(self.elements, rhs.elements)]
+        if isinstance(rhs, Field): 
+            sum_elements = [elem_self + elem_rhs for elem_self, elem_rhs in zip(self.elements, rhs.elements)]
+        else:
+            sum_elements = [elem + rhs for elem in self.elements]
         sum_field = Field(sum_elements, self.space)
         sum_field.grab_namings(self)
         return sum_field
 
     def __sub__(self, rhs):
-        diff_elements = [elem_self - elem_rhs for elem_self, elem_rhs in zip(self.elements, rhs.elements)]
+        if isinstance(rhs, Field): 
+            diff_elements = [elem_self - elem_rhs for elem_self, elem_rhs in zip(self.elements, rhs.elements)]
+        else:
+            diff_elements = [elem - rhs for elem in self.elements]
         diff_field = Field(diff_elements, self.space)
         diff_field.grab_namings(self)
         return diff_field
@@ -72,18 +78,30 @@ class Field(NamedAttributesContainer):
 
     def __getitem__(self, index):
         elems = []
-        space = []
+        space_elems = []
+        space_names = []
+        if isinstance(index, tuple): # not one-dimensional space
+            for coord, coord_name, coord_index in zip(self.space.elements, self.space.elements_names, index):
+                if isinstance(coord_index, slice): # add the coordinate into space only if it is a slice
+                    space_elems.append(coord[coord_index])
+                    space_names.append(coord_name)
+        elif isinstance(index, slice): # one-dimensional space:
+            space_elems.append(self.space.elements[0][index])
+            space_names.append(self.space.elements_names[0][index])
+#        else: # one point in one-dimensional space
+#            space_elems.append(self.space.elements[0][index])
+#            space_names.append(self.space.elements_names[0][index])
+
+        if len(space_elems) == 0 and len(self.elements) == 1: # just return value
+            return self.elements[0][index]
+            
         for elem in self.elements:
             elems.append(elem[index])
-        if isinstance(index, tuple): # not one-dimensional space
-            for coord, coord_index in zip(self.space.elements, index):
-                space.append(coord[coord_index])
-        elif isinstance(index, slice): # one-dimensional space:
-            space.append(self.space.elements[0][index])
-        else: # one point in one-dimensional space
-            space.append(self.space.elements[0][index])
-        f = Field(elems, Space(space))
-        f.grab_namings(self)
+
+        space = Space(space_elems)
+        space.set_elements_names(space_names)
+        f = Field(elems, space)
+        f.set_elements_names(self.elements_names)
         return f
 
     def grab_namings(self, another_field):
@@ -203,11 +221,21 @@ def average(field, elems, along):
     averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
     return averaged_subfield
 
+def at_index(field, coord, index):
+    #indexes = field.convert_names_to_indexes_if_necessary(elems)
+    coord_index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
+    all_indexes_expect_coord_index = list(range(coord_index)) + list(range(coord_index + 1, len(field.space.elements)))
+    access_list = []
+    for i in range(len(field.space.elements)):
+        if i != coord_index:
+            access_list.append(slice(0, field.space.elements[i].shape[0]))
+        else:
+            access_list.append(index)
+    return field[tuple(access_list)]
+
 def at(field, coord, value):
     #indexes = field.convert_names_to_indexes_if_necessary(elems)
     coord_index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
-    all_indexes_expect_coord_index = range(coord_index) + range(coord_index + 1, len(field.space.elements))
-    subspace = field.space.make_subspace(all_indexes_expect_coord_index)
 
     # As grid is not supposed to be even, use brute force to find the closest index at the given coordinate
     # Binary search is possible for sure, but there is no need -- it is quick enough
@@ -217,20 +245,22 @@ def at(field, coord, value):
     if value_index != 0:
         if np.abs(value - field.space.elements[coord_index][value_index - 1]) < np.abs(value - field.space.elements[coord_index][value_index]):
             value_index -= 1
-    access_list = []
-    for i in range(len(field.space.elements)):
-        if i != coord_index:
-            access_list.append(slice(0, field.space.elements[i].shape[0]))
-        else:
-            access_list.append(value_index)
 
-    raw_subfields = []
-    for raw_field in field.elements:
-        raw_subfields.append(raw_field[tuple(access_list)])
-
-    subfield = Field(raw_subfields, subspace)
-    subfield.set_elements_names(field.elements_names)
-    return subfield
+    return at_index(field, coord, value_index)
+#    access_list = []
+#    for i in range(len(field.space.elements)):
+#        if i != coord_index:
+#            access_list.append(slice(0, field.space.elements[i].shape[0]))
+#        else:
+#            access_list.append(value_index)
+#
+#    raw_subfields = []
+#    for raw_field in field.elements:
+#        raw_subfields.append(raw_field[tuple(access_list)])
+#
+#    subfield = Field(raw_subfields, subspace)
+#    subfield.set_elements_names(field.elements_names)
+#    return subfield
 
 def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
     # Two ways of enlarging -- extrapolation and filling by zeros.
@@ -250,6 +280,30 @@ def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
     edge_padding_shape[index] = number_of_points_on_each_edge
     edge_padding = np.zeros(tuple(edge_padding_shape))
     enlarged_raw_fields = [np.concatenate((edge_padding, elem, edge_padding), axis=index) for elem in field.elements]
+    #enlarged_raw_fields = [np.lib.pad(elem, ((0,0), (0,0), (number_of_points_on_each_edge, number_of_points_on_each_edge)), 'constant') for elem in field.elements]
+    enlarged_field = Field(enlarged_raw_fields, enlarged_space)
+    enlarged_field.grab_namings(field)
+
+    return enlarged_field
+
+def enlarge_field_one_side(field, coord, new_maximum, trying_to_extrapolate=False):
+    # Two ways of enlarging -- extrapolation and filling by zeros.
+    # TODO: trying_to_extrapolate is ignored now. Should be added
+    # IMPORTANT: equispaced mesh is assumed along coord direction
+    index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
+    step = field.space.elements[index][1] - field.space.elements[index][0]
+    old_maximum = field.space.elements[index][-1] 
+    number_of_points_on_each_edge = int((new_maximum - old_maximum) / step / 2)
+    edge_start = field.space.elements[index][-1] + step
+    edge_end = edge_start + step * (2 * number_of_points_on_each_edge - 1)
+    
+    enlarged_space = Space(field.space.elements)
+    enlarged_space.elements[index] = np.append(enlarged_space.elements[index], np.linspace(edge_start, edge_end, 2 * number_of_points_on_each_edge))
+
+    edge_padding_shape = list(field.elements[0].shape)
+    edge_padding_shape[index] = 2 * number_of_points_on_each_edge
+    edge_padding = np.zeros(tuple(edge_padding_shape))
+    enlarged_raw_fields = [np.concatenate((elem, edge_padding), axis=index) for elem in field.elements]
     #enlarged_raw_fields = [np.lib.pad(elem, ((0,0), (0,0), (number_of_points_on_each_edge, number_of_points_on_each_edge)), 'constant') for elem in field.elements]
     enlarged_field = Field(enlarged_raw_fields, enlarged_space)
     enlarged_field.grab_namings(field)
@@ -437,6 +491,18 @@ def find_likely_period(fields):
             smallest_diff_time = i
     return smallest_diff_time
 
+def find_likely_period(field, coord, ref_value):
+    coord_index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
+    ref_index = np_index(field.space.elements[coord_index], ref_value)
+    ref_subfield = at_index(field, coord_index, ref_index)
+    to_one_dim = lambda field_ : np.sqrt(integrate_field(np.power(field_.elements[0], 2), field_.space))
+    ref_map = to_one_dim(ref_subfield)
+    #smallest_diff_coord = 0
+    diff_map = np.array([to_one_dim(at_index(field, coord_index, i) - ref_subfield) \
+        for i in range(ref_index, field.space.elements[coord_index].shape[0])])
+    min_indices = local_maxima_indices(-diff_map, -1000)
+    return [ref_index + i for i in min_indices], diff_map
+
 def ke(field):
     return np.sum([norms(field, elem_name)**2 for elem_name in field.elements_names])
 
@@ -555,6 +621,7 @@ def get_reflection_symmetry_estimate(raw_field, space):
     # x and z are periodic, so the last mesh point is usually not uncluded
     neg_indexes = []
     pos_indexes = []
+    quarter_space_coords = []
     for raw_coord, coord_name in zip(space.elements, space.elements_names):
         points_num = raw_coord.shape[0]
         neg_start_index = 0
@@ -569,7 +636,11 @@ def get_reflection_symmetry_estimate(raw_field, space):
             pos_origin_index = neg_origin_index + 2
         neg_indexes.append(slice(neg_start_index, neg_origin_index + 1))
         pos_indexes.append(slice(-1, pos_origin_index - 1, -1))
-    return np.abs(raw_field[pos_indexes] + raw_field[neg_indexes])
+        quarter_space_coords.append(raw_coord[neg_indexes[-1]])
+    quarter_space = Space(quarter_space_coords)
+    symm_err_field = Field([np.abs(raw_field[pos_indexes] + raw_field[neg_indexes])], quarter_space)
+    return symm_err_field
+    #return np.abs(raw_field[pos_indexes] + raw_field[neg_indexes])
 
 def fourier_representation(field):
 #    u_decomp = []
@@ -610,6 +681,18 @@ def fourier_representation_z(field):
             u_z[:, z_i] = np.sqrt(1/u_y.shape[1] * np.sum(u_y**2, axis=1))
         u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
     return np.stack(u_decomp)
+
+def pointwise_fourier_representation(field, y_i, z_i):
+    u_decomp_cos = []
+    u_decomp_sin = []
+    u_z = np.zeros((len(field.space.x), len(field.space.z)))
+    u_y = np.zeros((len(field.space.x), len(field.space.y)))
+    for u_i in range(len(field.elements)):
+        u_f = np.fft.fft(field.elements[u_i][:, y_i, z_i])
+        #u_decomp.append(2 * np.abs(u_f[:len(field.space.z)//2]))
+        u_decomp_cos.append(2 * np.real(u_f[:len(field.space.z)//2]))
+        u_decomp_sin.append(2 * np.imag(u_f[:len(field.space.z)//2]))
+    return np.stack(u_decomp_cos), np.stack(u_decomp_sin)
 
 def complex_fourier_representation_z(field):
     u_decomp = []
@@ -657,4 +740,4 @@ if __name__ == '__main__':
     #wave_field = get_wave_field()
     wave_field = get_simple_3D_field()
     val = integrate_field(wave_field.elements[0], wave_field.space)
-    print val
+    print(val)
