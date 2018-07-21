@@ -37,3 +37,9 @@ def cd(x_nodes, f_nodes):
     df[1:-1] = np.array([three_points_midpoint(x_nodes, f_nodes, i) for i in range(1, len(f_nodes) - 1)])
     df[-1] = three_points_right_endpoint(x_nodes, f_nodes, len(f_nodes) - 1)
     return df
+
+def fd(x_nodes, f_nodes):
+    df = np.zeros_like(f_nodes)
+    df[0:-1] = np.array([fd_point(x_nodes, f_nodes, i) for i in range(0, len(f_nodes) - 1)])
+    df[-1] = df[-2]
+    return df
