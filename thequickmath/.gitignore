@@ -1,0 +1,4 @@
+# ignore python temporary files
+*.pyc
+*.log
+__pycache__/
