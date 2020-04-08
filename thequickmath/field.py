@@ -5,6 +5,7 @@ import re
 import matplotlib
 import matplotlib.pyplot as plt
 import h5py
+import netCDF4
 import numpy as np
 from thequickmath.aux import *
 
@@ -15,8 +16,8 @@ class Space(NamedAttributesContainer):
         #self.coords = list(coords)
         NamedAttributesContainer.__init__(self, coords, [])
 
-    def __del__(self):
-        print('____ delete space ____')
+#    def __del__(self):
+#        print('____ delete space ____')
 
     def dim(self):
         return len(self.elements)
@@ -41,8 +42,8 @@ class Field(NamedAttributesContainer):
         self.space = space
         NamedAttributesContainer.__init__(self, elements, [])
 
-    def __del__(self):
-        print('____ delete field ____')
+#    def __del__(self):
+#        print('____ delete field ____')
 
     def __add__(self, rhs):
         if isinstance(rhs, Field): 
@@ -163,7 +164,7 @@ def L2_norm(raw_array, coord, normalize=True):
 
 def norms(fields_, elem, normalize=True):
     fields = []
-    if is_sequence(fields_):
+    if not type(Field) and is_sequence(fields_):
         fields = list(fields_)
     else:
         fields.append(fields_)
@@ -176,7 +177,6 @@ def norms(fields_, elem, normalize=True):
             for i in range(len(field.space.elements)):
                 coord = field.space.elements[i]
                 V *= abs(coord[0] - coord[len(coord)-1])
-
         val = np.sqrt(integrate_field(np.power(field.elements[elem_index], 2), field.space) / V)
         L2_norms.append(val)
         #L2_norms.append(LabeledValue(val, '||' + self.elements_names[0] + '||'))
@@ -315,8 +315,6 @@ def map_to_equispaced_mesh(field, details_capacity_list):
         raise DimensionsDoNotMatch('Mapping to equispaced mesh is possible only for 2-dimensional space')
 
     new_coord_arrays = []
-    indexes_mappings = [] # i -> mapping for ith coord
-                          # mapping for ith coord: equispaced_array_index -> original_array_nearest_left_index
     for orig_coord_array, details_capacity in zip(field.space.elements, details_capacity_list):
         deltas = np.abs(orig_coord_array - np.roll(orig_coord_array, 1))
         max_delta = np.max(deltas[1:])
@@ -327,57 +325,88 @@ def map_to_equispaced_mesh(field, details_capacity_list):
         equispaced_number = (np.max(orig_coord_array) - np.min(orig_coord_array)) / equispaced_delta + 1
         equispaced_array = np.linspace(min_value, max_value, equispaced_number)
         new_coord_arrays.append(equispaced_array)
-        indexes_mappings.append(map_differently_spaced_arrays(orig_coord_array, equispaced_array))
-
-    # TODO: need to rewrite in matrix form
-    new_x = new_coord_arrays[0]
-    new_y = new_coord_arrays[1]
-    x_indexes_mapping = indexes_mappings[0]
-    y_indexes_mapping = indexes_mappings[1]
-    new_elements = [np.zeros((new_x.shape[0], new_y.shape[0])) for i in range(len(field.elements))]
-    for i in range(len(new_x)):
-        x = new_x[i]
-        x_l = field.space.elements[0][x_indexes_mapping[i]]
-        if i != len(new_x) - 1:
-            x_r = field.space.elements[0][x_indexes_mapping[i] + 1]
-        for j in range(len(new_y)):
-            y = new_y[j]
-            y_l = field.space.elements[1][y_indexes_mapping[j]]
-            if j != len(new_y) - 1:
-                y_r = field.space.elements[1][y_indexes_mapping[j] + 1]
-
-            for u, new_u in zip(field.elements, new_elements):
-                if i == len(new_x) - 1 and j == len(new_y) - 1: # "corner" of domain
-                    new_u[i, j] = u[x_indexes_mapping[i], y_indexes_mapping[j]]
-                    continue
-                #print(new_x.shape)
-                #print(new_y.shape)
-                #print('Shape')
-                #print(u.shape)
-                #print('x_indexes_mapping')
-                #print(x_indexes_mapping)
-                #print('y_indexes_mapping')
-                #print(y_indexes_mapping)
-                #print('i = ' + str(i) + ', j = ' + str(j))
-
-                if i == len(new_x) - 1: # linear interpolation along the y-axis
-                    new_u[i, j] = (y_r - y) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
-                                + (y - y_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j] + 1]
-                elif j == len(new_y) - 1: # linear interpolation along the x-axis
-                    new_u[i, j] = (x_r - x) / (x_r - x_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
-                                + (x - x_l) / (x_r - x_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j]]
-                else: # bilinear interpolation
-                    new_u[i, j] = (x_r - x) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
-                                + (x_r - x) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j] + 1] \
-                                + (x - x_l) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j]] \
-                                + (x - x_l) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j] + 1]
 
     equispaced_space = Space(new_coord_arrays)
+    new_elements = []
+    for u in field.elements:
+        new_elements.append(map_to_2d_mesh(u, field.space, equispaced_space))
     new_field = Field(new_elements, equispaced_space)
     new_field.grab_namings(field)
     return new_field
 
-def map_differently_spaced_arrays(orig_coord_array, new_coord_array):
+def map_to_1d_mesh(raw_field_1d, old_space, new_space):
+    '''
+    Maps raw_field_1d corresponding to old_space into a space defined by new_space using linear interpolation. 
+    If new_space is wider than old_space, constant extrapolation is used.
+    Returns a new 1D field 
+    '''
+    # Indices mappings: new_space_array_index -> original_array_nearest_left_index
+    x_i_map = build_left_index_map_between_arrays(old_space.elements[0], new_space.elements[0])
+
+    new_x = new_space.elements[0]
+    new_field = np.zeros((new_x.shape[0],))
+    for i in range(len(new_x)):
+        x = new_x[i]
+        if x < old_space.elements[0][0]:
+            new_field[i] = raw_field_1d[0]
+        elif x > old_space.elements[0][-1]:
+            new_field[i] = raw_field_1d[-1]
+        else:
+            x_l = old_space.elements[0][x_i_map[i]]
+            x_r = old_space.elements[0][x_i_map[i] + 1]
+            u_l = raw_field_1d[x_i_map[i]]
+            u_r = raw_field_1d[x_i_map[i] + 1]
+            new_field[i] = (x_r - x) / (x_r - x_l) * u_l \
+                         + (x - x_l) / (x_r - x_l) * u_r
+    return new_field
+
+def map_to_2d_mesh(raw_field_2d, old_space, new_space):
+    '''Maps raw_field_2d corresponding to old_space into a space defined by new_space. Returns a new 2D field 
+    '''
+    # Indices mappings: new_space_array_index -> original_array_nearest_left_index
+    x_i_map = build_left_index_map_between_arrays(old_space.elements[0], new_space.elements[0])
+    y_i_map = build_left_index_map_between_arrays(old_space.elements[1], new_space.elements[1])
+
+    new_x = new_space.elements[0]
+    new_y = new_space.elements[1]
+    new_field = np.zeros((new_x.shape[0], new_y.shape[0]))
+    for i in range(len(new_x)):
+        x = new_x[i]
+        x_l = old_space.elements[0][x_i_map[i]]
+        x_r = old_space.elements[0][x_i_map[i] + 1]
+        for j in range(len(new_y)):
+            y = new_y[j]
+            y_l = old_space.elements[1][y_i_map[j]]
+            y_r = old_space.elements[1][y_i_map[j] + 1]
+#            if j != len(new_y) - 1:
+#                y_r = old_space.elements[1][y_i_map[j] + 1]
+#            if i == len(new_x) - 1 and j == len(new_y) - 1: # "corner" of domain
+#                new_field[i, j] = raw_field_2d[x_i_map[i], y_i_map[j]]
+#                continue
+            u_ll = raw_field_2d[x_i_map[i], y_i_map[j]]
+            u_rl = raw_field_2d[x_i_map[i] + 1, y_i_map[j]]
+            u_lr = raw_field_2d[x_i_map[i], y_i_map[j] + 1]
+            u_rr = raw_field_2d[x_i_map[i] + 1, y_i_map[j] + 1]
+            # bilinear interpolation:
+            new_field[i, j] = (x_r - x) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u_ll \
+                            + (x_r - x) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u_lr \
+                            + (x - x_l) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u_rl \
+                            + (x - x_l) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u_rr
+
+#            if i == len(new_x) - 1: # linear interpolation along the y-axis
+#                new_field[i, j] = (y_r - y) / (y_r - y_l) * u_ll \
+#                                + (y - y_l) / (y_r - y_l) * u_lr
+#            elif j == len(new_y) - 1: # linear interpolation along the x-axis
+#                new_field[i, j] = (x_r - x) / (x_r - x_l) * u_ll \
+#                                + (x - x_l) / (x_r - x_l) * u_rl
+#            else: # bilinear interpolation
+#                new_field[i, j] = (x_r - x) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u_ll \
+#                                + (x_r - x) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u_lr \
+#                                + (x - x_l) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u_rl \
+#                                + (x - x_l) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u_rr
+    return new_field
+
+def build_left_index_map_between_arrays(orig_coord_array, new_coord_array):
     def search_for_next_left_index(array, start_index, value):
         left_index_ = start_index
         for i in range(start_index, len(array)):
@@ -386,13 +415,12 @@ def map_differently_spaced_arrays(orig_coord_array, new_coord_array):
                 break
         return left_index_
     
-    left_index = 0
-    left_indexes_array = [0 for i in range(new_coord_array.shape[0])]
-    # boundaries are also mapped exactly
-    left_indexes_array[0] = 0
-    left_indexes_array[-1] = len(orig_coord_array) - 1
-    for i in range(1, len(new_coord_array) - 1):
-        left_indexes_array[i] = search_for_next_left_index(orig_coord_array, left_index, new_coord_array[i])
+    last_left_index = 0
+    left_indexes_array = [0 for i in range(len(new_coord_array))]
+    #left_indexes_array[-1] = len(orig_coord_array) - 1
+    for i in range(0, len(new_coord_array)):
+        left_indexes_array[i] = search_for_next_left_index(orig_coord_array, last_left_index, new_coord_array[i])
+        last_left_index = left_indexes_array[i]
     return left_indexes_array
 
 def integrate_field(raw_field, space):
@@ -513,25 +541,62 @@ def max_pointwise_ke(field):
     return np.amax(ke_raw_field)
 
 def read_field(filename):
-    f = h5py.File(filename, 'r')
-    u_dataset = f['data']['u']
-    u_numpy = u_dataset[0,:,:,:]
-    v_numpy = u_dataset[1,:,:,:]
-    w_numpy = u_dataset[2,:,:,:]
+    _, extension = os.path.splitext(filename)
+    if extension == '.h5':
+        f = h5py.File(filename, 'r')
+        u_dataset = f['data']['u']
 
-    x_dataset = f['geom']['x']
-    y_dataset = f['geom']['y']
-    z_dataset = f['geom']['z']
-    x_numpy = x_dataset[:]
-    y_numpy = y_dataset[:]
-    z_numpy = z_dataset[:]
+        u_numpy = u_dataset[0,:,:,:]
+        v_numpy = u_dataset[1,:,:,:]
+        w_numpy = u_dataset[2,:,:,:]
 
-    # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1)
-    space = Space([x_numpy, y_numpy[::-1], z_numpy])
+        # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1)
+        u_numpy = u_numpy[:,::-1,:]
+        v_numpy = v_numpy[:,::-1,:]
+        w_numpy = w_numpy[:,::-1,:]
+
+        x_dataset = f['geom']['x']
+        y_dataset = f['geom']['y']
+        z_dataset = f['geom']['z']
+        x_numpy = x_dataset[:]
+        y_numpy = y_dataset[:]
+        z_numpy = z_dataset[:]
+
+        # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1)
+        y_numpy = y_numpy[::-1]
+
+        attrs = dict(f.attrs)
+    elif extension == '.nc':
+        f = netCDF4.Dataset(filename, 'r', format='NETCDF4')
+
+        u_numpy = np.array(f['Velocity_X'])
+        v_numpy = np.array(f['Velocity_Y'])
+        w_numpy = np.array(f['Velocity_Z'])
+
+        # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1). Also array axes are Z, Y, X, so change them to X, Y, Z
+        u_numpy = u_numpy[:,::-1,:]
+        v_numpy = v_numpy[:,::-1,:]
+        w_numpy = w_numpy[:,::-1,:]
+        u_numpy = np.transpose(u_numpy)
+        v_numpy = np.transpose(v_numpy)
+        w_numpy = np.transpose(w_numpy)
+
+        x_numpy = np.array(f['X'])
+        y_numpy = np.array(f['Y'])
+        z_numpy = np.array(f['Z'])
+
+        # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1)
+        y_numpy = y_numpy[::-1]
+
+        attrs = dict(f.__dict__)
+    else:
+        print('Bad extension of file "{}" containing field data.'.format(filename))
+
+    space = Space([x_numpy, y_numpy, z_numpy])
     space.set_xyz_naming()
-    field = Field([u_numpy[:,::-1,:], v_numpy[:,::-1,:], w_numpy[:,::-1,:]], space)
+    field = Field([u_numpy, v_numpy, w_numpy], space)
     field.set_uvw_naming()
-    return field, dict(f.attrs)
+    return field, attrs
 
 def read_fields(path, file_prefix='u', file_postfix='.h5', start_time = 0, end_time = None, time_step=1):
     files_list = os.listdir(path)
@@ -569,7 +634,7 @@ def read_fields(path, file_prefix='u', file_postfix='.h5', start_time = 0, end_t
 def write_field(field, attrs, filename):
     f = h5py.File(filename, 'w')
     # Copy attributes
-    for key, value in attrs.iteritems():
+    for key, value in attrs.items():
         f.attrs[key] = value
         
     data = f.create_group('data')
@@ -682,6 +747,17 @@ def fourier_representation_z(field):
         u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
     return np.stack(u_decomp)
 
+def fourier_representation_midplane(field):
+    u_decomp = []
+    u_z = np.zeros((len(field.space.x), len(field.space.z)))
+    y_i = len(field.space.y) // 2
+    for u_i in range(len(field.elements)):
+        for z_i in range(len(field.space.z)):
+            u_f = np.fft.fft(field.elements[u_i][:, y_i, z_i])
+            u_z[:, z_i] = np.abs(u_f)
+        u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
+    return np.stack(u_decomp)
+
 def pointwise_fourier_representation(field, y_i, z_i):
     u_decomp_cos = []
     u_decomp_sin = []
@@ -708,6 +784,51 @@ def complex_fourier_representation_z(field):
             u_z[:, z_i] = u_y[:, max_wall_normal_magnitude_on_zero_mode_index]
         u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
     return np.stack(u_decomp)
+
+def scale(field, c_x, c_z):
+    '''Scales the field according to a rule [u, v, w](x, y, z) -> [u, v, w](c_x*x, y, c_z*z)
+    '''
+    scaled_space = Space([c_x*field.space.x, c_z*field.space.z])
+    scaled_space.set_elements_names(['x', 'z'])
+    return map_field(field, scaled_space)
+
+def shift(field, alpha, gamma):
+    '''Shifts the field according to a rule [u, v, w](x, y, z) -> [u, v, w](x + alpha, y, z + beta)
+    The x- and z-directions are assumed to be periodic.
+    '''
+    # We first roll the arrays and after that interpolate them
+    def normalize_shift(shift, period):
+        shift -= (shift // period)*period
+        if shift < 0:
+            shift += period
+        return shift
+    spatial_period = lambda x_: x_[-1] + (x_[1] - x_[0])
+    rolling_ii = []
+    rolled_xz = []
+    shifted_xz = []
+    for coord, shift in zip((field.space.x, field.space.z), (alpha, gamma)):
+        normalized_shift = normalize_shift(shift, spatial_period(coord))
+        coord_i_rolling = build_left_index_map_between_arrays(coord, [normalized_shift,])[0]
+        rolling_ii.append(-coord_i_rolling)
+        rolled_xz.append(coord + coord_i_rolling*(coord[1] - coord[0]))
+        shifted_xz.append(coord + normalized_shift)
+    rolled_space = Space([rolled_xz[0], field.space.y, rolled_xz[1]])
+    rolled_elements = [np.roll(u, rolling_ii, (0, 2)) for u in field.elements]
+    rolled_field = Field(rolled_elements, rolled_space)
+    rolled_field.grab_namings(field)
+    shifted_space = Space(shifted_xz)
+    shifted_space.set_elements_names(['x', 'z'])
+    return map_field(rolled_field, shifted_space)
+
+def map_field(field, new_2d_space):
+    old_2d_space = Space([field.space.x, field.space.z])
+    mapped_elements = [np.zeros_like(u) for u in field.elements]
+    for u, mapped_u in zip(field.elements, mapped_elements):
+        for i in range(u.shape[1]):
+            mapped_u[:,i,:] = map_to_2d_mesh(u[:,i,:], old_2d_space, new_2d_space)
+    mapped_field = Field(mapped_elements, Space([new_2d_space.x, field.space.y, new_2d_space.z]))
+    mapped_field.grab_namings(field)
+    return mapped_field
 
 class BadFilesOrder(Exception):
     pass

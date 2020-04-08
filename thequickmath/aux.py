@@ -104,3 +104,21 @@ def local_maxima_indices(np_array, threshold):
         if np_array[i] > np_array[i - 1] and np_array[i] > np_array[i + 1] and np.abs(np_array[i]) > threshold:
             maxima.append(i)
     return maxima
+
+def map_onto_grid(ys, xs, xs_new):
+    '''
+    Returns new ys such that it is now mapped on grid xs_new using linear interpolation
+    '''
+    ys_new = np.zeros_like(xs_new)
+    left_i = 1
+    for i in range(len(xs_new)):
+        x = xs_new[i]
+        while left_i < len(xs) - 1 and xs[left_i] < x:
+            left_i += 1
+        left_i -= 1
+        x_l = xs[left_i]
+        x_r = xs[left_i + 1]
+        y_l = ys[left_i]
+        y_r = ys[left_i + 1]
+        ys_new[i] = 1./(x_r - x_l) * (y_r*(x - x_l) - y_l*(x - x_r))
+    return ys_new
