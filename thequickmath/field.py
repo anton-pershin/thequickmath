@@ -1,12 +1,10 @@
-from __future__ import division
-from math import *
 import os
 import re
-import matplotlib
-import matplotlib.pyplot as plt
-import h5py
-import netCDF4
+
 import numpy as np
+import netCDF4
+import h5py
+
 from thequickmath.aux import *
 
 # TODO: implement method swapcoords for Field. Sometimes it is useful to change the leading dimension.
