@@ -4,6 +4,7 @@ from functools import partial
 import os
 import os.path
 import shutil
+from bisect import bisect_right
 
 class NamedAttributesContainer(object):
     def __init__(self, elements, elements_names):
@@ -94,6 +95,19 @@ def np_index(np_array, val):
     Returns index corresponding to the nearest element
     '''
     return np.abs(np_array - val).argmin()
+
+def index_for_almost_exact_coincidence(seq, val):
+    """
+    Returns index corresponding to *almost* exact coincidence of val with an element in the sequence seq
+    """
+    i = bisect_right(seq, val)  # find next value after "the rightmost value less than or equal to val"
+    i -= 1
+    if not np.isclose(seq[i], val):  # here we assume that 10^-8 is considered as accurate enough
+        i += 1
+        if not np.isclose(seq[i], val):
+            raise ValueError('Bad value is given as input ({}). '
+                             'Closest values in a sequence are {} and {}'.format(val, seq[i], seq[i + 1]))
+    return i
 
 def local_maxima_indices(np_array, threshold):
     '''
