@@ -112,6 +112,17 @@ class Field(NamedAttributesContainer):
         f.set_elements_names(self.elements_names)
         return f
 
+    def __str__(self):
+        space_dependence = '(' + ', '.join(self.space.elements_names) + ')'
+        components_descr = '\n\t'.join([elem + space_dependence for elem in self.elements_names])
+        space_descr = '\n\t'.join(['{} (dimension: {})'.format(elem_name, len(elem))
+                                   for elem, elem_name in zip(self.space.elements, self.space.elements_names)])
+        return 'Field instance has {} components:\n\t{}\n' \
+               'where each component is defined on the space with {} coordinates:\n\t{}\n' \
+               'Total dimension is {}'.format(len(self.elements), components_descr, len(self.space.elements),
+                                              space_descr,
+                                              len(self.elements)*np.prod([len(elem) for elem in self.space.elements]))
+
     def grab_namings(self, another_field):
         self.space.set_elements_names(another_field.space.elements_names)
         self.set_elements_names(another_field.elements_names)
