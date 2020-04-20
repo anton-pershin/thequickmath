@@ -35,6 +35,10 @@ class Space(NamedAttributesContainer):
 class Field(NamedAttributesContainer):
     '''
     Base class for field representation
+
+    If Field instance has only one component (element), then one can access the attributes/methods of this component as
+    if they were the attributes/methods of the field instance (e.g., field.element.method transforms into
+    field.method in this case).
     '''
     def __init__(self, elements, space):
         self.space = space
@@ -42,6 +46,11 @@ class Field(NamedAttributesContainer):
 
 #    def __del__(self):
 #        print('____ delete field ____')
+
+    def __getattr__(self, item):
+        if len(self.elements) == 1:  # if there is only one element, we just proxy __getattr__ to this elements
+            return getattr(self.elements[0], item)
+        raise AttributeError('No attribute {} found'.format(item))
 
     def __add__(self, rhs):
         if isinstance(rhs, Field): 
