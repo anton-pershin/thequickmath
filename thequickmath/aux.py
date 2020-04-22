@@ -96,15 +96,21 @@ def np_index(np_array, val):
     '''
     return np.abs(np_array - val).argmin()
 
-def index_for_almost_exact_coincidence(seq, val):
+def index_for_almost_exact_coincidence(seq, val, rtol=1e-05, atol=1e-08):
     """
-    Returns index corresponding to *almost* exact coincidence of val with an element in the sequence seq
+    Returns index corresponding to *almost* exact coincidence of val with an element in the sequence seq. For the
+    explanation of arguments rtol, atol, see numpy.isclose docs.
     """
+    if len(seq) == 0:
+        raise ValueError('Sequence is empty')
     i = bisect_right(seq, val)  # find next value after "the rightmost value less than or equal to val"
     i -= 1
-    if not np.isclose(seq[i], val):  # here we assume that 10^-8 is considered as accurate enough
+    if not np.isclose(seq[i], val, rtol=rtol, atol=atol):
+        if i + 1 == len(seq):
+            raise ValueError('Bad value is given as input ({}). '
+                             'Closest value in a sequence is {}'.format(val, seq[i]))
         i += 1
-        if not np.isclose(seq[i], val):
+        if not np.isclose(seq[i], val, rtol=rtol, atol=atol):
             raise ValueError('Bad value is given as input ({}). '
                              'Closest values in a sequence are {} and {}'.format(val, seq[i], seq[i + 1]))
     return i
