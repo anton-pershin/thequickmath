@@ -235,7 +235,7 @@ def average(field, elems, along):
         averaged_raw_fields.append(np.mean(raw_field, coord_index))
 
     averaged_subfield.elements = averaged_raw_fields
-    all_indexes_expect_coord_index = range(coord_index) + range(coord_index + 1, len(averaged_subfield.space.elements))
+    all_indexes_expect_coord_index = list(range(coord_index)) + list(range(coord_index + 1, len(averaged_subfield.space.elements)))
     averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
     return averaged_subfield
 
