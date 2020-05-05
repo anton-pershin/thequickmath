@@ -92,9 +92,23 @@ def is_sequence(arg):
 
 def np_index(np_array, val):
     '''
-    Returns index corresponding to the nearest element
+    Returns index corresponding to the nearest element. Outdated function, should be removed. Use
     '''
     return np.abs(np_array - val).argmin()
+
+
+def index_for_closest_element(seq_sorted, val):
+    """
+    Returns index corresponding to the closest element to val in the sorted sequence seq_sorted.
+    """
+    if len(seq_sorted) == 0:
+        raise ValueError('Sequence is empty')
+    i = bisect_right(seq_sorted, val)  # find next value after "the rightmost value less than or equal to val"
+    if i == len(seq_sorted):
+        return seq_sorted[i - 1]
+    else:
+        return np.argmin([seq_sorted[i - 1], seq_sorted[i]]) + i - 1
+
 
 def index_for_almost_exact_coincidence(seq_sorted, val, rtol=1e-05, atol=1e-08):
     """
@@ -115,6 +129,7 @@ def index_for_almost_exact_coincidence(seq_sorted, val, rtol=1e-05, atol=1e-08):
                              'Closest values in a sequence are {} and {}'.format(val, seq_sorted[i - 1], seq_sorted[i]))
     return i
 
+
 def index_for_almost_exact_coincidence_unsorted(seq, val, rtol=1e-05, atol=1e-08):
     """
     Returns index corresponding to *almost* exact coincidence of val with an element in the sequence seq.
@@ -126,6 +141,7 @@ def index_for_almost_exact_coincidence_unsorted(seq, val, rtol=1e-05, atol=1e-08
         if np.isclose(seq_val, val, rtol=rtol, atol=atol):
             return i
     raise ValueError('No close value is found in the sequence (given value is {})'.format(val))
+
 
 def local_maxima_indices(np_array, threshold):
     '''
