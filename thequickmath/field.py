@@ -7,7 +7,6 @@ import h5py
 
 from thequickmath.aux import *
 
-# TODO: implement method swapcoords for Field. Sometimes it is useful to change the leading dimension.
 
 class Space(NamedAttributesContainer):
     def __init__(self, coords):
@@ -32,14 +31,17 @@ class Space(NamedAttributesContainer):
         subspace.set_elements_names(subsontainer.elements_names)
         return subspace
 
+
 class Field(NamedAttributesContainer):
-    '''
+    """
     Base class for field representation
 
     If Field instance has only one component (element), then one can access the attributes/methods of this component as
     if they were the attributes/methods of the field instance (e.g., field.element.method transforms into
     field.method in this case).
-    '''
+
+    :todo: need to implement method swapcoords for Field. Sometimes it is useful to change the leading dimension.
+    """
     def __init__(self, elements, space):
         self.space = space
         NamedAttributesContainer.__init__(self, elements, [])
@@ -156,6 +158,16 @@ class Field(NamedAttributesContainer):
         self.space.change_order(indexes)
         self.space.update_attributed_elements()
 
+
+def zeros_like(f: Field) -> Field:
+    space_ = Space(f.space.elements)
+    space_.set_elements_names(f.space.elements_names)
+    elements_made_of_zeros = [np.zeros_like(e) for e in f.elements]
+    zero_field = Field(elements_made_of_zeros, space_)
+    zero_field.set_elements_names(f.elements_names)
+    return zero_field
+
+
 def L2_norms(field, normalize):
     V = 1
     if normalize:
@@ -170,6 +182,7 @@ def L2_norms(field, normalize):
 
     return L2_norms
 
+
 def L2_norm(raw_array, coord, normalize=True):
     V = 1
     if normalize:
@@ -179,6 +192,7 @@ def L2_norm(raw_array, coord, normalize=True):
     #L2_norms.append(LabeledValue(val, '||' + self.elements_names[i] + '||'))
 
     return val
+
 
 def norms(fields_, elem, normalize=True):
     fields = []
@@ -204,6 +218,7 @@ def norms(fields_, elem, normalize=True):
     else:
         return L2_norms[0]
 
+
 # TODO: must be generalized
 #def filter(self, coord, rule):
 def filter(field, coord, filtering_capacity):
@@ -226,6 +241,7 @@ def filter(field, coord, filtering_capacity):
     filtered_field.grab_namings(field)
     return filtered_field
 
+
 def average(field, elems, along):
     indexes = field.convert_names_to_indexes_if_necessary(elems)
     coord_index = field.space.convert_names_to_indexes_if_necessary([along])[0]
@@ -233,11 +249,12 @@ def average(field, elems, along):
     averaged_raw_fields = []
     for raw_field in averaged_subfield.elements:
         averaged_raw_fields.append(np.mean(raw_field, coord_index))
-
     averaged_subfield.elements = averaged_raw_fields
     all_indexes_expect_coord_index = list(range(coord_index)) + list(range(coord_index + 1, len(averaged_subfield.space.elements)))
     averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
+    averaged_subfield.update_attributed_elements()
     return averaged_subfield
+
 
 def at_index(field, coord, index):
     #indexes = field.convert_names_to_indexes_if_necessary(elems)
@@ -250,6 +267,7 @@ def at_index(field, coord, index):
         else:
             access_list.append(index)
     return field[tuple(access_list)]
+
 
 def at(field, coord, value):
     #indexes = field.convert_names_to_indexes_if_necessary(elems)
@@ -280,6 +298,7 @@ def at(field, coord, value):
 #    subfield.set_elements_names(field.elements_names)
 #    return subfield
 
+
 def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
     # Two ways of enlarging -- extrapolation and filling by zeros.
     # TODO: trying_to_extrapolate is ignored now. Should be added
@@ -303,6 +322,7 @@ def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
     enlarged_field.grab_namings(field)
 
     return enlarged_field
+
 
 def enlarge_field_one_side(field, coord, new_maximum, trying_to_extrapolate=False):
     # Two ways of enlarging -- extrapolation and filling by zeros.
@@ -328,6 +348,7 @@ def enlarge_field_one_side(field, coord, new_maximum, trying_to_extrapolate=Fals
 
     return enlarged_field
 
+
 def map_to_equispaced_mesh(field, details_capacity_list):
     if field.space.dim() != 2:
         raise DimensionsDoNotMatch('Mapping to equispaced mesh is possible only for 2-dimensional space')
@@ -352,12 +373,13 @@ def map_to_equispaced_mesh(field, details_capacity_list):
     new_field.grab_namings(field)
     return new_field
 
+
 def map_to_1d_mesh(raw_field_1d, old_space, new_space):
-    '''
+    """
     Maps raw_field_1d corresponding to old_space into a space defined by new_space using linear interpolation. 
     If new_space is wider than old_space, constant extrapolation is used.
     Returns a new 1D field 
-    '''
+    """
     # Indices mappings: new_space_array_index -> original_array_nearest_left_index
     x_i_map = build_left_index_map_between_arrays(old_space.elements[0], new_space.elements[0])
 
@@ -378,9 +400,11 @@ def map_to_1d_mesh(raw_field_1d, old_space, new_space):
                          + (x - x_l) / (x_r - x_l) * u_r
     return new_field
 
+
 def map_to_2d_mesh(raw_field_2d, old_space, new_space):
-    '''Maps raw_field_2d corresponding to old_space into a space defined by new_space. Returns a new 2D field 
-    '''
+    """
+    Maps raw_field_2d corresponding to old_space into a space defined by new_space. Returns a new 2D field
+    """
     # Indices mappings: new_space_array_index -> original_array_nearest_left_index
     x_i_map = build_left_index_map_between_arrays(old_space.elements[0], new_space.elements[0])
     y_i_map = build_left_index_map_between_arrays(old_space.elements[1], new_space.elements[1])
@@ -424,6 +448,7 @@ def map_to_2d_mesh(raw_field_2d, old_space, new_space):
 #                                + (x - x_l) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u_rr
     return new_field
 
+
 def build_left_index_map_between_arrays(orig_coord_array, new_coord_array):
     def search_for_next_left_index(array, start_index, value):
         left_index_ = start_index
@@ -440,6 +465,7 @@ def build_left_index_map_between_arrays(orig_coord_array, new_coord_array):
         left_indexes_array[i] = search_for_next_left_index(orig_coord_array, last_left_index, new_coord_array[i])
         last_left_index = left_indexes_array[i]
     return left_indexes_array
+
 
 def integrate_field(raw_field, space):
     # Introduce flat high-dimensional array. 
@@ -521,6 +547,7 @@ def integrate_field(raw_field, space):
     recurs_integration(0, [])
     return flat_array[-1]
 
+
 def find_likely_period(fields):
     # Take the first field as a reference point. Compare in terms of second norms all subsequent fields to it
     ref_field = fields[0][0]
@@ -537,6 +564,7 @@ def find_likely_period(fields):
             smallest_diff_time = i
     return smallest_diff_time
 
+
 def find_likely_period(field, coord, ref_value):
     coord_index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
     ref_index = np_index(field.space.elements[coord_index], ref_value)
@@ -549,14 +577,17 @@ def find_likely_period(field, coord, ref_value):
     min_indices = local_maxima_indices(-diff_map, -1000)
     return [ref_index + i for i in min_indices], diff_map
 
+
 def ke(field):
     return np.sum([norms(field, elem_name)**2 for elem_name in field.elements_names])
+
 
 def max_pointwise_ke(field):
     ke_raw_field = np.zeros(field.elements[0].shape)
     for raw_field in field.elements:
         ke_raw_field += np.power(raw_field, 2)
     return np.amax(ke_raw_field)
+
 
 def read_field(filename):
     _, extension = os.path.splitext(filename)
@@ -616,6 +647,7 @@ def read_field(filename):
     field.set_uvw_naming()
     return field, attrs
 
+
 def read_fields(path, file_prefix='u', file_postfix='.h5', start_time = 0, end_time = None, time_step=1):
     files_list = os.listdir(path)
     found_files = []
@@ -649,6 +681,7 @@ def read_fields(path, file_prefix='u', file_postfix='.h5', start_time = 0, end_t
         attrs.append(attr)
     return fields, attrs
 
+
 def write_field(field, attrs, filename):
     f = h5py.File(filename, 'w')
     # Copy attributes
@@ -666,6 +699,7 @@ def write_field(field, attrs, filename):
             geom[field.space.elements_names[i]] = field.space.elements[i]
 
     f.close()
+
 
 def call_by_portions(path, func, start_time=0, end_time=None, portion_size=100):
     '''
@@ -690,14 +724,16 @@ def call_by_portions(path, func, start_time=0, end_time=None, portion_size=100):
 
     return results
 
+
 def check_reflection_symmetry_xyz(field):
     # We except that the space is meshed such that there is a symmetry of distribution about the midplane
     for i, raw_field in enumerate(field.elements):
         indexes_str = ','.join([coord_name for coord_name in field.space.elements_names])
         neg_indexes_str = ','.join(['-' + coord_name for coord_name in field.space.elements_names])
         max_symm_error = np.max(get_reflection_symmetry_estimate(raw_field, field.space))
-        print('Symmetry {}({}) -> -{}({}): {}'.format(field.elements_names[i], indexes_str, \
-                                                    field.elements_names[i], neg_indexes_str, max_symm_error))
+        print('Symmetry {}({}) -> -{}({}): {}'.format(field.elements_names[i], indexes_str,
+                                                      field.elements_names[i], neg_indexes_str, max_symm_error))
+
 
 def get_reflection_symmetry_estimate(raw_field, space):
     # Check simple symmetry u(x,y,z) -> +-u(-x, -y, -z)
@@ -725,6 +761,7 @@ def get_reflection_symmetry_estimate(raw_field, space):
     return symm_err_field
     #return np.abs(raw_field[pos_indexes] + raw_field[neg_indexes])
 
+
 def fourier_representation(field):
 #    u_decomp = []
 #    y_mid = 0.0
@@ -751,6 +788,7 @@ def fourier_representation(field):
         u_decomp.append(np.sqrt(1/u_y.shape[1] * np.sum(u_y**2, axis=1)))
     return u_decomp[0][:len(u_decomp[0])//2], u_decomp[1][:len(u_decomp[0])//2], u_decomp[2][:len(u_decomp[0])//2]
 
+
 def fourier_representation_z(field):
     u_decomp = []
     u_z = np.zeros((len(field.space.x), len(field.space.z)))
@@ -765,6 +803,7 @@ def fourier_representation_z(field):
         u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
     return np.stack(u_decomp)
 
+
 def fourier_representation_midplane(field):
     u_decomp = []
     u_z = np.zeros((len(field.space.x), len(field.space.z)))
@@ -775,6 +814,7 @@ def fourier_representation_midplane(field):
             u_z[:, z_i] = np.abs(u_f)
         u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
     return np.stack(u_decomp)
+
 
 def pointwise_fourier_representation(field, y_i, z_i):
     u_decomp_cos = []
@@ -787,6 +827,7 @@ def pointwise_fourier_representation(field, y_i, z_i):
         u_decomp_cos.append(2 * np.real(u_f[:len(field.space.z)//2]))
         u_decomp_sin.append(2 * np.imag(u_f[:len(field.space.z)//2]))
     return np.stack(u_decomp_cos), np.stack(u_decomp_sin)
+
 
 def complex_fourier_representation_z(field):
     u_decomp = []
@@ -803,12 +844,14 @@ def complex_fourier_representation_z(field):
         u_decomp.append(np.copy(u_z[:u_z.shape[0]//2, :]))
     return np.stack(u_decomp)
 
+
 def scale(field, c_x, c_z):
     '''Scales the field according to a rule [u, v, w](x, y, z) -> [u, v, w](c_x*x, y, c_z*z)
     '''
     scaled_space = Space([c_x*field.space.x, c_z*field.space.z])
     scaled_space.set_elements_names(['x', 'z'])
     return map_field(field, scaled_space)
+
 
 def shift(field, alpha, gamma):
     '''Shifts the field according to a rule [u, v, w](x, y, z) -> [u, v, w](x + alpha, y, z + beta)
@@ -838,6 +881,7 @@ def shift(field, alpha, gamma):
     shifted_space.set_elements_names(['x', 'z'])
     return map_field(rolled_field, shifted_space)
 
+
 def map_field(field, new_2d_space):
     old_2d_space = Space([field.space.x, field.space.z])
     mapped_elements = [np.zeros_like(u) for u in field.elements]
@@ -848,8 +892,10 @@ def map_field(field, new_2d_space):
     mapped_field.grab_namings(field)
     return mapped_field
 
+
 class BadFilesOrder(Exception):
     pass
+
 
 if __name__ == '__main__':
     randomly_spaced_array = np.array([0., 0.1, 0.3, 0.32, 0.33, 0.5, 0.6, 0.62, 0.8, 1.])
