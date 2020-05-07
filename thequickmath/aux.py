@@ -105,7 +105,7 @@ def index_for_closest_element(seq_sorted, val):
         raise ValueError('Sequence is empty')
     i = bisect_right(seq_sorted, val)  # find next value after "the rightmost value less than or equal to val"
     if i == len(seq_sorted):
-        return seq_sorted[i - 1]
+        return i - 1
     else:
         return np.argmin([seq_sorted[i - 1], seq_sorted[i]]) + i - 1
 
