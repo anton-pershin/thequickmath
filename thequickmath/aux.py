@@ -1,10 +1,11 @@
-import numpy as np
-import inspect
-from functools import partial
-import os
-import os.path
-import shutil
+from typing import Union
 from bisect import bisect_right
+
+import numpy as np
+
+
+SupportsArithmetic = Union[int, float, np.ndarray]
+
 
 class NamedAttributesContainer(object):
     def __init__(self, elements, elements_names):
@@ -82,18 +83,22 @@ class LabeledList(object):
         self.values = values
         self.label = label
 
+
 class LabelsDoNotMatch(Exception):
     pass
+
 
 def is_sequence(arg):
     return (not hasattr(arg, "strip") and
             hasattr(arg, "__getitem__") or
             hasattr(arg, "__iter__"))
 
+
 def np_index(np_array, val):
-    '''
+    """
     Returns index corresponding to the nearest element. Outdated function, should be removed. Use
-    '''
+    index_for_closest_element, index_for_almost_exact_coincidence or index_for_almost_exact_coincidence_unsorted
+    """
     return np.abs(np_array - val).argmin()
 
 
@@ -170,3 +175,10 @@ def map_onto_grid(ys, xs, xs_new):
         y_r = ys[left_i + 1]
         ys_new[i] = 1./(x_r - x_l) * (y_r*(x - x_l) - y_l*(x - x_r))
     return ys_new
+
+
+def relative_error(approx_val: SupportsArithmetic, exact_val: SupportsArithmetic) -> SupportsArithmetic:
+    """
+    Returns relative error |approx_val - exact_val| / |exact_val|
+    """
+    return np.abs(approx_val - exact_val) / np.abs(exact_val)
