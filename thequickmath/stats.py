@@ -15,6 +15,7 @@ class ScipyDistribution:
         d = ScipyDistribution(scipy.stats.beta, 0.5, 2.)
         first_decile = d.ppf(0.1)
 
+    :todo: must be replaced to `frozen distribution`
     """
     def __init__(self, rv_obj: scipy.stats.rv_continuous,  *args):
         self._rv_obj = rv_obj
@@ -59,7 +60,7 @@ class EmpiricalDistribution:
             self.indices[j] = i
         probs = probs[:j+1]
         self.indices = self.indices[:j+1]
-        probs /= float(len(probs))
+        probs /= float(np.sum(probs))
         unique_values = np.take(self.data_samples, self.indices)
         values = (unique_values, probs)
         self._rv_obj = scipy.stats.rv_discrete(values=values, **kwargs)
