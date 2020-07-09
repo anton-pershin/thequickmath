@@ -617,10 +617,22 @@ def read_field(filename):
         attrs = dict(f.attrs)
     elif extension == '.nc':
         f = netCDF4.Dataset(filename, 'r', format='NETCDF4')
+        original_names = {
+            'field': {
+                'u': 'Velocity_X',
+                'v': 'Velocity_Y',
+                'w': 'Velocity_Z',
+            },
+            'space': {
+                'x': 'X',
+                'y': 'Y',
+                'z': 'Z',
+            },
+        }
 
-        u_numpy = np.array(f['Velocity_X'])
-        v_numpy = np.array(f['Velocity_Y'])
-        w_numpy = np.array(f['Velocity_Z'])
+        u_numpy = np.array(f[original_names['field']['u']])
+        v_numpy = np.array(f[original_names['field']['v']])
+        w_numpy = np.array(f[original_names['field']['w']])
 
         # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1). Also array axes are Z, Y, X, so change them to X, Y, Z
         u_numpy = u_numpy[:,::-1,:]
@@ -630,16 +642,19 @@ def read_field(filename):
         v_numpy = np.transpose(v_numpy)
         w_numpy = np.transpose(w_numpy)
 
-        x_numpy = np.array(f['X'])
-        y_numpy = np.array(f['Y'])
-        z_numpy = np.array(f['Z'])
+        x_numpy = np.array(f[original_names['space']['x']])
+        y_numpy = np.array(f[original_names['space']['y']])
+        z_numpy = np.array(f[original_names['space']['z']])
 
         # Reverse order for the y-coordinate (chflow gives it from 1 to -1 instead of from -1 to 1)
         y_numpy = y_numpy[::-1]
 
         attrs = dict(f.__dict__)
+        attrs['__META__'] = {
+            'original_names': original_names,
+        }
     else:
-        print('Bad extension of file "{}" containing field data.'.format(filename))
+        raise ValueError('Bad extension of file "{}" containing field data.'.format(filename))
 
     space = Space([x_numpy, y_numpy, z_numpy])
     space.set_xyz_naming()
@@ -683,22 +698,58 @@ def read_fields(path, file_prefix='u', file_postfix='.h5', start_time = 0, end_t
 
 
 def write_field(field, attrs, filename):
-    f = h5py.File(filename, 'w')
-    # Copy attributes
-    for key, value in attrs.items():
-        f.attrs[key] = value
-        
-    data = f.create_group('data')
-    geom = f.create_group('geom')
-    data['u'] = np.stack(tuple(elem[:,::-1,:] for elem in field.elements), axis=0)
-    for i in range(len(field.space.elements_names)):
-        # Dirty hack -- the y-coordinate is to be inverted in chflow, so invert it here
-        if field.space.elements_names[i] == 'y':
-            geom[field.space.elements_names[i]] = field.space.elements[i][::-1]
-        else:
-            geom[field.space.elements_names[i]] = field.space.elements[i]
+    _, extension = os.path.splitext(filename)
+    if extension == '.h5':
+        f = h5py.File(filename, 'w')
+        # Copy attributes
+        for key, value in attrs.items():
+            f.attrs[key] = value
 
-    f.close()
+        data = f.create_group('data')
+        geom = f.create_group('geom')
+        data['u'] = np.stack(tuple(elem[:,::-1,:] for elem in field.elements), axis=0)
+        for i in range(len(field.space.elements_names)):
+            # Dirty hack -- the y-coordinate is to be inverted in chflow, so invert it here
+            if field.space.elements_names[i] == 'y':
+                geom[field.space.elements_names[i]] = field.space.elements[i][::-1]
+            else:
+                geom[field.space.elements_names[i]] = field.space.elements[i]
+        f.close()
+    elif extension == '.nc':
+        f = netCDF4.Dataset(filename, 'w', format='NETCDF4')
+        original_names = attrs['__META__']['original_names']
+        f.createDimension(original_names['space']['x'], len(field.space.x))
+        f.createDimension(original_names['space']['y'], len(field.space.y))
+        f.createDimension(original_names['space']['z'], len(field.space.z))
+        vars = {}
+        vars['x'] = f.createVariable(original_names['space']['x'], 'f8', (original_names['space']['x'],))
+        vars['y'] = f.createVariable(original_names['space']['y'], 'f8', (original_names['space']['y'],))
+        vars['z'] = f.createVariable(original_names['space']['z'], 'f8', (original_names['space']['z'],))
+        vars['u'] = f.createVariable(original_names['field']['u'], 'f8', (original_names['space']['x'],
+                                                                          original_names['space']['y'],
+                                                                          original_names['space']['z'],))
+        vars['v'] = f.createVariable(original_names['field']['v'], 'f8', (original_names['space']['x'],
+                                                                          original_names['space']['y'],
+                                                                          original_names['space']['z'],))
+        vars['w'] = f.createVariable(original_names['field']['w'], 'f8', (original_names['space']['x'],
+                                                                          original_names['space']['y'],
+                                                                          original_names['space']['z'],))
+        # Save space coordinates
+        for coord_name in field.space.elements_names:
+            if coord_name == 'y':
+                vars[coord_name][:] = getattr(field.space, coord_name)[::-1]
+            else:
+                vars[coord_name][:] = getattr(field.space, coord_name)
+        # Save components of the field
+        for comp_name in field.elements_names:
+            vars[comp_name][:, :, :] = getattr(field, comp_name)
+        # Save attributes
+        for k, v in attrs.items():
+            if k != '__META__':
+                setattr(f, k, v)
+        f.close()
+    else:
+        raise ValueError('Bad extension of file "{}" containing field data.'.format(filename))
 
 
 def call_by_portions(path, func, start_time=0, end_time=None, portion_size=100):
