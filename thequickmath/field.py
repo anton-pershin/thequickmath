@@ -5,7 +5,7 @@ import numpy as np
 import netCDF4
 import h5py
 
-from thequickmath.aux import *
+from thequickmath.misc import *
 
 
 class Space(NamedAttributesContainer):
